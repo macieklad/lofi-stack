@@ -46,7 +46,7 @@ function copyStub(from, to, variables = {}) {
 }
 
 function execSubProgram(program, command) {
-  execSync(`pnpm ts-node scripts/${program}.ts ${command}`, {
+  execSync(`bun run scripts/${program}.ts ${command}`, {
     stdio: "inherit",
   });
 }

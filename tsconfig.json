@@ -1,7 +1,6 @@
 {
-  "exclude": ["test/cypress", "./cypress.config.ts"],
   "include": [
-    "remix.env.d.ts",
+    "env.d.ts",
     "**/*.ts",
     "**/*.tsx",
     "scripts/stubs/migrations.stub"

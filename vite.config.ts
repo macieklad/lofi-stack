@@ -1,12 +1,16 @@
 /// <reference types="vitest" />
 /// <reference types="vite/client" />
-
-import react from "@vitejs/plugin-react";
-import tsconfigPaths from "vite-tsconfig-paths";
-import { defineConfig } from "vitest/config";
+import { unstable_vitePlugin as remix } from "@remix-run/dev";
+import { defineConfig } from "vite";
+import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  plugins: [
+    tsconfigPaths(),
+    remix({
+      ignoredRouteFiles: ["**/.*", "**/*.test.{js,jsx,ts,tsx}"],
+    }),
+  ],
   test: {
     globals: true,
     environment: "happy-dom",
@@ -17,5 +21,5 @@ export default defineConfig({
       ".*\\/build\\/.*",
       ".*\\/postgres-data\\/.*",
     ],
-  },
+  }
 });

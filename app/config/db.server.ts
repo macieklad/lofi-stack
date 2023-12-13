@@ -1,9 +1,9 @@
-import type { Database } from '../database/types'
-import { Pool } from 'pg'
+import type { Database } from "~/database/types"
+import pg from 'pg'
 import { Kysely, PostgresDialect } from 'kysely'
 
 const dialect = new PostgresDialect({
-  pool: new Pool({
+  pool: new pg.Pool({
     connectionString: process.env.DATABASE_URL,
     max: parseInt(process.env.DATABASE_MAX_CONNECTIONS || "10")
   })
