@@ -1,121 +1,78 @@
-import path from "path";
+import path from "node:path";
+import url from "node:url";
 
-import prom from "@isaacs/express-prometheus-middleware";
-import { createRequestHandler } from "@remix-run/express";
-import compression from "compression";
-import express from "express";
-import morgan from "morgan";
+import { fastifyStatic } from "@fastify/static";
+import { createRequestHandler } from "@mcansh/remix-fastify";
+import { fastify } from "fastify";
+import { unstable_viteServerBuildModuleId } from "@remix-run/dev";
 
-const app = express();
-const metricsApp = express();
-app.use(
-  prom({
-    metricsPath: "/metrics",
-    collectDefaultMetrics: true,
-    metricsApp,
-  })
-);
+let vite =
+  process.env.NODE_ENV === "production"
+    ? undefined
+    : await import("vite").then((m) =>
+        m.createServer({ server: { middlewareMode: true } }),
+      );
 
-app.use((req, res, next) => {
-  // helpful headers:
-  res.set("x-fly-region", process.env.FLY_REGION ?? "unknown");
-  res.set("Strict-Transport-Security", `max-age=${60 * 60 * 24 * 365 * 100}`);
+let app = fastify();
 
-  // /clean-urls/ -> /clean-urls
-  if (req.path.endsWith("/") && req.path.length > 1) {
-    const query = req.url.slice(req.path.length);
-    const safepath = req.path.slice(0, -1).replace(/\/+/g, "/");
-    res.redirect(301, safepath + query);
-    return;
-  }
-  next();
-});
+let noopContentParser = (_request, payload, done) => {
+  done(null, payload);
+};
 
-// if we're not in the primary region, then we need to make sure all
-// non-GET/HEAD/OPTIONS requests hit the primary region rather than read-only
-// Postgres DBs.
-// learn more: https://fly.io/docs/getting-started/multi-region-databases/#replay-the-request
-app.all("*", function getReplayResponse(req, res, next) {
-  const { method, path: pathname } = req;
-  const { PRIMARY_REGION, FLY_REGION } = process.env;
+app.addContentTypeParser("application/json", noopContentParser);
+app.addContentTypeParser("*", noopContentParser);
 
-  const isMethodReplayable = !["GET", "OPTIONS", "HEAD"].includes(method);
-  const isReadOnlyRegion =
-    FLY_REGION && PRIMARY_REGION && FLY_REGION !== PRIMARY_REGION;
+let __dirname = url.fileURLToPath(new URL(".", import.meta.url));
 
-  const shouldReplay = isMethodReplayable && isReadOnlyRegion;
-
-  if (!shouldReplay) return next();
-
-  const logInfo = {
-    pathname,
-    method,
-    PRIMARY_REGION,
-    FLY_REGION,
-  };
-  console.info(`Replaying:`, logInfo);
-  res.set("fly-replay", `region=${PRIMARY_REGION}`);
-  return res.sendStatus(409);
-});
-
-app.use(compression());
-
-// http://expressjs.com/en/advanced/best-practice-security.html#at-a-minimum-disable-x-powered-by-header
-app.disable("x-powered-by");
-
-// Remix fingerprints its assets so we can cache forever.
-app.use(
-  "/build",
-  express.static("public/build", { immutable: true, maxAge: "1y" })
-);
-
-// Everything else (like favicon.ico) is cached for an hour. You may want to be
-// more aggressive with this caching.
-app.use(express.static("public", { maxAge: "1h" }));
-
-app.use(morgan("tiny"));
-
-const MODE = process.env.NODE_ENV;
-const BUILD_DIR = path.join(process.cwd(), "build");
-
-app.all(
-  "*",
-  MODE === "production"
-    ? createRequestHandler({ build: require(BUILD_DIR) })
-    : (...args) => {
-        purgeRequireCache();
-        const requestHandler = createRequestHandler({
-          build: require(BUILD_DIR),
-          mode: MODE,
-        });
-        return requestHandler(...args);
-      }
-);
-
-const port = process.env.PORT || 3000;
-
-app.listen(port, () => {
-  // require the built app so we're ready when the first request comes in
-  require(BUILD_DIR);
-  console.log(`✅ app ready: http://localhost:${port}`);
-});
-
-const metricsPort = process.env.METRICS_PORT || 3001;
-
-metricsApp.listen(metricsPort, () => {
-  console.log(`✅ metrics ready: http://localhost:${metricsPort}/metrics`);
-});
-
-function purgeRequireCache() {
-  // purge require cache on requests for "server side HMR" this won't let
-  // you have in-memory objects between requests in development,
-  // alternatively you can set up nodemon/pm2-dev to restart the server on
-  // file changes, we prefer the DX of this though, so we've included it
-  // for you by default
-  for (const key in require.cache) {
-    if (key.startsWith(BUILD_DIR)) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete require.cache[key];
-    }
-  }
+// handle asset requests
+if (vite) {
+  let middie = await import("@fastify/middie").then((m) => m.default);
+  await app.register(middie);
+  await app.use(vite.middlewares);
+} else {
+  await app.register(fastifyStatic, {
+    root: path.join(__dirname, "build", "client", "assets"),
+    prefix: "/assets",
+    wildcard: true,
+    decorateReply: false,
+    cacheControl: true,
+    dotfiles: "allow",
+    etag: true,
+    maxAge: "1y",
+    immutable: true,
+    serveDotFiles: true,
+    lastModified: true,
+  });
 }
+
+await app.register(fastifyStatic, {
+  root: path.join(__dirname, "build", "client"),
+  prefix: "/",
+  wildcard: false,
+  cacheControl: true,
+  dotfiles: "allow",
+  etag: true,
+  maxAge: "1h",
+  serveDotFiles: true,
+  lastModified: true,
+});
+
+// handle SSR requests
+app.all("*", async (request, reply) => {
+  try {
+    let handler = createRequestHandler({
+      build: vite
+        ? () => vite?.ssrLoadModule(unstable_viteServerBuildModuleId)
+        : await import("./build/server/index.js"),
+    });
+    return handler(request, reply);
+  } catch (error) {
+    console.error(error);
+    return reply.status(500).send(error);
+  }
+});
+
+let port = Number(process.env.PORT) || 3000;
+
+let address = await app.listen({ port, host: "0.0.0.0" });
+console.log(`✅ app ready: ${address}`);

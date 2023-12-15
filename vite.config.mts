@@ -6,10 +6,11 @@ import tsconfigPaths from 'vite-tsconfig-paths';
 
 export default defineConfig({
   plugins: [
-    tsconfigPaths(),
     remix({
       ignoredRouteFiles: ["**/.*", "**/*.test.{js,jsx,ts,tsx}"],
+      serverModuleFormat: "esm"
     }),
+    tsconfigPaths(),
   ],
   test: {
     globals: true,
