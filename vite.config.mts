@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [
     remix({
       ignoredRouteFiles: ["**/.*", "**/*.test.{js,jsx,ts,tsx}"],
-      serverModuleFormat: "esm"
+      serverModuleFormat: "cjs"
     }),
     tsconfigPaths(),
   ],

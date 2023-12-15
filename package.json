@@ -4,9 +4,9 @@
   "sideEffects": false,
   "scripts": {
     "invoke": "bun ./scripts/invoke.js",
-    "start": "NODE_ENV=production bun run ./server.ts",
+    "start": "NODE_ENV=production node ./server.mjs",
     "build": "vite build && vite build --ssr",
-    "dev": "bun run ./server.ts",
+    "dev": "bun run ./server.mjs",
     "docker": "docker-compose up -d",
     "format": "prettier --write .",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
