@@ -1,8 +1,8 @@
-import dotenv from 'dotenv'
 import { installGlobals } from '@remix-run/node';
 import type { FullConfig } from '@playwright/test';
+import { loadConfig } from "./utils";
 
-dotenv.config()
+loadConfig()
 installGlobals()
 
 async function globalSetup(config: FullConfig) {
